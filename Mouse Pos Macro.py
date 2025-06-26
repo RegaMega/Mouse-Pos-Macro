@@ -31,7 +31,7 @@ class MouseMacroApp:
         self.setpos_key = "f5"
         self.toggle_key = "f6"
         self.macro_running = False
-        self.repeat_count = tk.StringVar(value="0")  # 0 = infinite
+        self.repeat_count = tk.StringVar(value="0")
         self.autoload_path = ""
         self.load_settings()
         self.build_ui()
@@ -51,6 +51,7 @@ class MouseMacroApp:
             json.dump({"autoload": self.autoload_path}, f)
 
     def bind_hotkeys(self):
+        # Binds the hotkeys for setting positions and toggling macro
         try:
             if hasattr(self, "_setpos_hook"):
                 keyboard.remove_hotkey(self._setpos_hook)
@@ -62,11 +63,11 @@ class MouseMacroApp:
         self._toggle_hook = keyboard.add_hotkey(self.toggle_key, self.toggle_macro)
 
     def apply_theme(self):
+        # Applies a dark theme
         style = ttk.Style()
         style.theme_use("clam")
         bg = "#2e2e2e"
         fg = "#ffffff"
-
         self.root.configure(bg=bg)
         style.configure(".", background=bg, foreground=fg, fieldbackground=bg)
         style.configure("TEntry", fieldbackground=bg, foreground=fg)
@@ -76,6 +77,7 @@ class MouseMacroApp:
         style.configure("TFrame", background=bg)
 
     def build_ui(self):
+        # Builds all UI components (buttons, fields, scrollable list)
         self.apply_theme()
 
         cfg_frame = ttk.Frame(self.root)
@@ -92,11 +94,8 @@ class MouseMacroApp:
         keys_frame = ttk.Frame(self.root)
         keys_frame.pack(fill="x", padx=10, pady=5)
         ttk.Label(keys_frame, text="Click to rebind:").pack(side="top", anchor="w")
-
-        # Store buttons as instance vars so we can update text on rebind
         self.setpos_button = ttk.Button(keys_frame, text=f"Set Pos ({self.setpos_key})", command=lambda: self.rebind_popup("setpos"))
         self.setpos_button.pack(side="left")
-
         self.toggle_button = ttk.Button(keys_frame, text=f"Start/Stop Macro ({self.toggle_key})", command=lambda: self.rebind_popup("toggle"))
         self.toggle_button.pack(side="left", padx=(5,0))
 
@@ -121,12 +120,9 @@ class MouseMacroApp:
 
         footer_frame = ttk.Frame(self.root)
         footer_frame.pack(side="bottom", fill="x", padx=10, pady=5)
-        made_by_label = ttk.Label(footer_frame, text="Made by")
-        made_by_label.pack(side="left", anchor="w")
-        ivee_label = tk.Label(footer_frame, text=" iiVee", fg="red", bg="#2e2e2e")  # red "iiVee"
-        ivee_label.pack(side="left", anchor="w")
-        discord_label = tk.Label(footer_frame, text="  Discord: j7f", fg="purple", bg="#2e2e2e")  # purple
-        discord_label.pack(side="left", anchor="w", padx=(10, 0))
+        ttk.Label(footer_frame, text="Made by").pack(side="left")
+        tk.Label(footer_frame, text=" iiVee", fg="red", bg="#2e2e2e").pack(side="left")
+        tk.Label(footer_frame, text="  Discord: j7f", fg="purple", bg="#2e2e2e").pack(side="left", padx=(10, 0))
 
         self.update_positions_ui()
 
@@ -147,11 +143,10 @@ class MouseMacroApp:
             messagebox.showerror("Error", f"Config file does not exist: {sel}")
 
     def rebind_popup(self, which):
+        # Lets the user change the hotkey
         top = tk.Toplevel(self.root)
         top.title("Press a key…")
         tk.Label(top, text="Press the new hotkey…").pack(padx=20, pady=10)
-
-        # Focus and grab input on popup so no extra click needed
         top.grab_set()
         top.focus_force()
         top.attributes('-topmost', True)
@@ -170,8 +165,7 @@ class MouseMacroApp:
         top.bind("<Key>", on_key)
 
     def add_position(self):
-        p = Position()
-        self.positions.append(p)
+        self.positions.append(Position())
         self.update_positions_ui()
 
     def clear_positions(self):
@@ -179,6 +173,7 @@ class MouseMacroApp:
         self.update_positions_ui()
 
     def set_next_position(self):
+        # Sets the first unused slot to current mouse position
         for p in self.positions:
             if p.x == 0 and p.y == 0:
                 x, y = pyautogui.position()
@@ -227,7 +222,6 @@ class MouseMacroApp:
         self.repeat_count.set(str(data.get("repeat_count", "0")))
         self.bind_hotkeys()
         self.update_positions_ui()
-        # Update button texts after loading config
         self.setpos_button.config(text=f"Set Pos ({self.setpos_key})")
         self.toggle_button.config(text=f"Start/Stop Macro ({self.toggle_key})")
 
@@ -275,6 +269,6 @@ if __name__ == "__main__":
     try:
         root.iconbitmap("computermouse.ico")
     except Exception:
-        pass  # ignore if icon missing
+        pass
     app = MouseMacroApp(root)
     root.mainloop()
