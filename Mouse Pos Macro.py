@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import json, os, threading, pyautogui, keyboard
+import json, os, threading, keyboard, time
+import win32api, win32con
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), "Documents", "MousePosMacro")
 SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
@@ -173,17 +174,18 @@ class MouseMacroApp:
         self.update_positions_ui()
 
     def set_next_position(self):
-        # Sets the first unused slot to current mouse position
+        # Sets the first unused slot to the current mouse position using win32api.GetCursorPos()
         for p in self.positions:
             if p.x == 0 and p.y == 0:
-                x, y = pyautogui.position()
+                x, y = win32api.GetCursorPos()
                 p.x, p.y = x, y
                 p.label_var.set(f"{x}, {y}")
                 self.update_positions_ui()
                 return
         self.add_position()
-        self.positions[-1].x, self.positions[-1].y = pyautogui.position()
-        self.positions[-1].label_var.set(f"{self.positions[-1].x}, {self.positions[-1].y}")
+        x, y = win32api.GetCursorPos()
+        self.positions[-1].x, self.positions[-1].y = x, y
+        self.positions[-1].label_var.set(f"{x}, {y}")
         self.update_positions_ui()
 
     def update_positions_ui(self):
@@ -251,17 +253,32 @@ class MouseMacroApp:
             messagebox.showerror("Invalid input", "Repeat must be a number.")
             return
 
+        BUTTONS = {
+            "left": (win32con.MOUSEEVENTF_LEFTDOWN, win32con.MOUSEEVENTF_LEFTUP),
+            "right": (win32con.MOUSEEVENTF_RIGHTDOWN, win32con.MOUSEEVENTF_RIGHTUP),
+            "middle": (win32con.MOUSEEVENTF_MIDDLEDOWN, win32con.MOUSEEVENTF_MIDDLEUP),
+        }
+
         count = 0
         while self.macro_running and (count < repeat):
             for p in self.positions:
-                if not self.macro_running: return
-                pyautogui.moveTo(p.x, p.y)
-                pyautogui.click(button=p.click.get())
+                if not self.macro_running:
+                    return
+                # Move the mouse cursor
+                win32api.SetCursorPos((p.x, p.y))
+
+                # Get the down/up events for the selected button
+                down, up = BUTTONS.get(p.click.get(), BUTTONS["left"])
+                # Simulate the click
+                win32api.mouse_event(down, 0, 0, 0, 0)
+                win32api.mouse_event(up, 0, 0, 0, 0)
+
+                # Delay between clicks
                 try:
-                    delay = max(0.001, int(p.delay_var.get()) / 1000.0)
+                    delay = max(0.0001, int(p.delay_var.get()) / 1000.0)
                 except:
-                    delay = 0.1
-                threading.Event().wait(delay)
+                    delay = 0.01
+                time.sleep(delay)
             count += 1
 
 if __name__ == "__main__":
