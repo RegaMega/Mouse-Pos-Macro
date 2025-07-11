@@ -199,6 +199,13 @@ class MouseMacroApp:
             ttk.Label(row, text="Delay:").pack(side="left")
             ttk.Entry(row, width=6, textvariable=p.delay_var).pack(side="left", padx=5)
             ttk.OptionMenu(row, p.click, p.click.get(), "left", "right", "middle").pack(side="left", padx=5)
+            ttk.Button(row, text="✖", width=3, command=lambda i=idx: self.remove_position(i)).pack(side="right", padx=5)
+
+    def remove_position(self, index):
+        if 0 <= index < len(self.positions):
+            del self.positions[index]
+            self.update_positions_ui()
+
 
     def save_as(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", initialdir=CONFIG_DIR, filetypes=[("JSON files","*.json")])
