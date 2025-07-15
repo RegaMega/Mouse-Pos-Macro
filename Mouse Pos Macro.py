@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, threading, keyboard, time
 import win32api, win32con
+import tempfile
+import urllib.request
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), "Documents", "MousePosMacro")
 SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
@@ -290,9 +292,16 @@ class MouseMacroApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    ICON_URL = "https://raw.githubusercontent.com/RegaMega/Mouse-Pos-Macro/refs/heads/main/computermouse.ico"
+    ICON_TEMP_PATH = os.path.join(tempfile.gettempdir(), "mpm_icon.ico")
+
     try:
-        root.iconbitmap("computermouse.ico")
-    except Exception:
-        pass
+        if not os.path.exists(ICON_TEMP_PATH):
+            urllib.request.urlretrieve(ICON_URL, ICON_TEMP_PATH)
+        root.iconbitmap(ICON_TEMP_PATH)
+    except Exception as e:
+        print(f"[WARN] Failed to set window icon: {e}")
+
     app = MouseMacroApp(root)
     root.mainloop()
