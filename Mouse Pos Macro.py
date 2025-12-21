@@ -36,6 +36,8 @@ class MouseMacroApp:
         self.macro_running = False
         self.repeat_count = tk.StringVar(value="0")
         self.autoload_path = ""
+        self.click_at_cursor_var = tk.BooleanVar(value=False)
+        self.cps_delay_var = tk.StringVar(value="100")
         self.load_settings()
         self.build_ui()
         self.bind_hotkeys()
@@ -45,16 +47,18 @@ class MouseMacroApp:
     def load_settings(self):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         if os.path.exists(SETTINGS_PATH):
-            with open(SETTINGS_PATH, "r") as f:
-                data = json.load(f)
+            try:
+                with open(SETTINGS_PATH, "r") as f:
+                    data = json.load(f)
                 self.autoload_path = data.get("autoload", "")
+            except json.JSONDecodeError:
+                self.autoload_path = ""
 
     def save_settings(self):
         with open(SETTINGS_PATH, "w") as f:
             json.dump({"autoload": self.autoload_path}, f)
 
     def bind_hotkeys(self):
-        # Binds the hotkeys for setting positions and toggling macro
         try:
             if hasattr(self, "_setpos_hook"):
                 keyboard.remove_hotkey(self._setpos_hook)
@@ -66,7 +70,6 @@ class MouseMacroApp:
         self._toggle_hook = keyboard.add_hotkey(self.toggle_key, self.toggle_macro)
 
     def apply_theme(self):
-        # Applies a dark theme
         style = ttk.Style()
         style.theme_use("clam")
         bg = "#2e2e2e"
@@ -77,10 +80,12 @@ class MouseMacroApp:
         style.configure("TCombobox", fieldbackground=bg, foreground=fg)
         style.configure("TLabel", background=bg, foreground=fg)
         style.configure("TButton", background=bg, foreground=fg)
+        style.map("TButton", background=[("active", "#1D1D1D")], foreground=[("active", fg)])
+        style.configure("TCheckbutton", background=bg, foreground=fg)
+        style.map("TCheckbutton", background=[("active", "#1D1D1D")], foreground=[("active", fg)])
         style.configure("TFrame", background=bg)
 
     def build_ui(self):
-        # Builds all UI components (buttons, fields, scrollable list)
         self.apply_theme()
 
         cfg_frame = ttk.Frame(self.root)
@@ -101,11 +106,14 @@ class MouseMacroApp:
         self.setpos_button.pack(side="left")
         self.toggle_button = ttk.Button(keys_frame, text=f"Start/Stop Macro ({self.toggle_key})", command=lambda: self.rebind_popup("toggle"))
         self.toggle_button.pack(side="left", padx=(5,0))
+        ttk.Checkbutton(keys_frame, text="Click at cursor", variable=self.click_at_cursor_var).pack(side="left", padx=(5,0))
 
         control_frame = ttk.Frame(self.root)
         control_frame.pack(fill="x", padx=10, pady=5)
         ttk.Label(control_frame, text="Repeat (0 = infinite):").pack(side="left")
         ttk.Entry(control_frame, textvariable=self.repeat_count, width=6).pack(side="left", padx=(0, 10))
+        ttk.Label(control_frame, text="CPS (ms):").pack(side="left")
+        ttk.Entry(control_frame, textvariable=self.cps_delay_var, width=6).pack(side="left", padx=(0, 10))
 
         self.pos_canvas = tk.Canvas(self.root, height=200, bg="#2e2e2e", highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.pos_canvas.yview)
@@ -118,8 +126,7 @@ class MouseMacroApp:
 
         ctrl = ttk.Frame(self.root)
         ctrl.pack(fill="x", padx=10, pady=5)
-        ttk.Button(ctrl, text="Add +", command=self.add_position).pack(side="left")
-        ttk.Button(ctrl, text="Clear All", command=self.clear_positions).pack(side="left", padx=(5,0))
+        ttk.Button(ctrl, text="Clear All", command=self.clear_positions).pack(side="right", padx=(5,0))
 
         footer_frame = ttk.Frame(self.root)
         footer_frame.pack(side="bottom", fill="x", padx=10, pady=5)
@@ -138,7 +145,7 @@ class MouseMacroApp:
     def set_autoload(self):
         sel = self.autoload_combo.get()
         full = os.path.join(CONFIG_DIR, sel)
-        if os.path.exists(full):
+        if os.path.isfile(full):
             self.autoload_path = full
             self.save_settings()
             messagebox.showinfo("Auto-load", f"Will auto-load: {sel} on startup")
@@ -146,7 +153,6 @@ class MouseMacroApp:
             messagebox.showerror("Error", f"Config file does not exist: {sel}")
 
     def rebind_popup(self, which):
-        # Lets the user change the hotkey
         top = tk.Toplevel(self.root)
         top.title("Press a key…")
         tk.Label(top, text="Press the new hotkey…").pack(padx=20, pady=10)
@@ -176,7 +182,6 @@ class MouseMacroApp:
         self.update_positions_ui()
 
     def set_next_position(self):
-        # Sets the first unused slot to the current mouse position using win32api.GetCursorPos()
         for p in self.positions:
             if p.x == 0 and p.y == 0:
                 x, y = win32api.GetCursorPos()
@@ -220,7 +225,7 @@ class MouseMacroApp:
             self.load_config(path)
 
     def load_config(self, path):
-        if not os.path.exists(path):
+        if not os.path.isfile(path):
             print(f"[WARN] Config file not found: {path}")
             return
         with open(path, "r") as f:
@@ -231,6 +236,8 @@ class MouseMacroApp:
         self.setpos_key = data.get("setpos_key", self.setpos_key)
         self.toggle_key = data.get("toggle_key", self.toggle_key)
         self.repeat_count.set(str(data.get("repeat_count", "0")))
+        self.click_at_cursor_var.set(data.get("click_at_cursor", False))
+        self.cps_delay_var.set(str(data.get("cps_delay", 100)))
         self.bind_hotkeys()
         self.update_positions_ui()
         self.setpos_button.config(text=f"Set Pos ({self.setpos_key})")
@@ -243,6 +250,8 @@ class MouseMacroApp:
             "setpos_key": self.setpos_key,
             "toggle_key": self.toggle_key,
             "repeat_count": int(self.repeat_count.get()),
+            "click_at_cursor": self.click_at_cursor_var.get(),
+            "cps_delay": int(self.cps_delay_var.get()),
         }
         with open(path, "w") as f:
             json.dump(data, f)
@@ -270,24 +279,32 @@ class MouseMacroApp:
 
         count = 0
         while self.macro_running and (count < repeat):
-            for p in self.positions:
-                if not self.macro_running:
-                    return
-                # Move the mouse cursor
-                win32api.SetCursorPos((p.x, p.y))
-
-                # Get the down/up events for the selected button
-                down, up = BUTTONS.get(p.click.get(), BUTTONS["left"])
-                # Simulate the click
-                win32api.mouse_event(down, 0, 0, 0, 0)
-                win32api.mouse_event(up, 0, 0, 0, 0)
-
-                # Delay between clicks
-                try:
-                    delay = max(0.0001, int(p.delay_var.get()) / 1000.0)
-                except:
-                    delay = 0.01
-                time.sleep(delay)
+            if self.click_at_cursor_var.get():
+                num_clicks = max(1, len(self.positions))
+                for _ in range(num_clicks):
+                    if not self.macro_running:
+                        return
+                    down, up = BUTTONS["left"]
+                    win32api.mouse_event(down, 0, 0, 0, 0)
+                    win32api.mouse_event(up, 0, 0, 0, 0)
+                    try:
+                        delay = max(0.0001, int(self.cps_delay_var.get()) / 1000.0)
+                    except:
+                        delay = 0.01
+                    time.sleep(delay)
+            else:
+                for p in self.positions:
+                    if not self.macro_running:
+                        return
+                    win32api.SetCursorPos((p.x, p.y))
+                    down, up = BUTTONS.get(p.click.get(), BUTTONS["left"])
+                    win32api.mouse_event(down, 0, 0, 0, 0)
+                    win32api.mouse_event(up, 0, 0, 0, 0)
+                    try:
+                        delay = max(0.0001, int(p.delay_var.get()) / 1000.0)
+                    except:
+                        delay = 0.01
+                    time.sleep(delay)
             count += 1
 
 if __name__ == "__main__":
