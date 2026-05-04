@@ -4,6 +4,45 @@ import json, os, threading, keyboard, time
 import win32api, win32con
 import tempfile
 import urllib.request
+import ctypes
+
+PUL = ctypes.POINTER(ctypes.c_ulong)
+
+class MouseInput(ctypes.Structure):
+    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.c_ulong), 
+                ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong), ("dwExtraInfo", PUL)]
+
+class Input_I(ctypes.Union):
+    _fields_ = [("mi", MouseInput)]
+
+class Input(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_ulong), ("ii", Input_I)]
+
+def send_hardware_click(button="left", down=True):
+    flags = 0
+    if button == "left": 
+        flags = 0x0002 if down else 0x0004
+    elif button == "right": 
+        flags = 0x0008 if down else 0x0010
+    elif button == "middle":
+        flags = 0x0020 if down else 0x0040
+    
+    mi = MouseInput(0, 0, 0, flags, 0, None)
+    ii = Input_I(mi=mi)
+    x = Input(type=0, ii=ii)
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
+
+def send_hardware_move(x, y):
+    """Move the mouse to absolute screen coordinates using SendInput (hardware-level)."""
+    screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+    screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+    norm_x = int(x * 65535 / (screen_w - 1))
+    norm_y = int(y * 65535 / (screen_h - 1))
+    flags = 0x0001 | 0x8000
+    mi = MouseInput(norm_x, norm_y, 0, flags, 0, None)
+    ii = Input_I(mi=mi)
+    inp = Input(type=0, ii=ii)
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(inp), ctypes.sizeof(inp))
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), "Documents", "MousePosMacro")
 SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
@@ -37,6 +76,7 @@ class MouseMacroApp:
         self.repeat_count = tk.StringVar(value="0")
         self.autoload_path = ""
         self.click_at_cursor_var = tk.BooleanVar(value=False)
+        self.simulate_movement_var = tk.BooleanVar(value=False)
         self.cps_delay_var = tk.StringVar(value="100")
         self.load_settings()
         self.build_ui()
@@ -107,6 +147,7 @@ class MouseMacroApp:
         self.toggle_button = ttk.Button(keys_frame, text=f"Start/Stop Macro ({self.toggle_key})", command=lambda: self.rebind_popup("toggle"))
         self.toggle_button.pack(side="left", padx=(5,0))
         ttk.Checkbutton(keys_frame, text="Click at cursor", variable=self.click_at_cursor_var).pack(side="left", padx=(5,0))
+        ttk.Checkbutton(keys_frame, text="Simulate Mouse Movement (Games)", variable=self.simulate_movement_var).pack(side="left", padx=(5,0))
 
         control_frame = ttk.Frame(self.root)
         control_frame.pack(fill="x", padx=10, pady=5)
@@ -148,7 +189,6 @@ class MouseMacroApp:
         if os.path.isfile(full):
             self.autoload_path = full
             self.save_settings()
-            messagebox.showinfo("Auto-load", f"Will auto-load: {sel} on startup")
         else:
             messagebox.showerror("Error", f"Config file does not exist: {sel}")
 
@@ -213,7 +253,6 @@ class MouseMacroApp:
             del self.positions[index]
             self.update_positions_ui()
 
-
     def save_as(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", initialdir=CONFIG_DIR, filetypes=[("JSON files","*.json")])
         if path:
@@ -237,6 +276,7 @@ class MouseMacroApp:
         self.toggle_key = data.get("toggle_key", self.toggle_key)
         self.repeat_count.set(str(data.get("repeat_count", "0")))
         self.click_at_cursor_var.set(data.get("click_at_cursor", False))
+        self.simulate_movement_var.set(data.get("simulate_movement", False))
         self.cps_delay_var.set(str(data.get("cps_delay", 100)))
         self.bind_hotkeys()
         self.update_positions_ui()
@@ -251,6 +291,7 @@ class MouseMacroApp:
             "toggle_key": self.toggle_key,
             "repeat_count": int(self.repeat_count.get()),
             "click_at_cursor": self.click_at_cursor_var.get(),
+            "simulate_movement": self.simulate_movement_var.get(),
             "cps_delay": int(self.cps_delay_var.get()),
         }
         with open(path, "w") as f:
@@ -266,16 +307,23 @@ class MouseMacroApp:
 
     def run_macro(self):
         try:
-            repeat = float("inf") if self.repeat_count.get().strip() == "0" else int(self.repeat_count.get())
-        except:
+            repeat_val = self.repeat_count.get().strip()
+            repeat = float("inf") if repeat_val == "0" else int(repeat_val)
+        except ValueError:
             messagebox.showerror("Invalid input", "Repeat must be a number.")
+            self.macro_running = False
             return
 
-        BUTTONS = {
-            "left": (win32con.MOUSEEVENTF_LEFTDOWN, win32con.MOUSEEVENTF_LEFTUP),
-            "right": (win32con.MOUSEEVENTF_RIGHTDOWN, win32con.MOUSEEVENTF_RIGHTUP),
-            "middle": (win32con.MOUSEEVENTF_MIDDLEDOWN, win32con.MOUSEEVENTF_MIDDLEUP),
-        }
+        def move_to(x, y):
+            """Move mouse to (x, y); uses SendInput if simulate movement is on, else SetCursorPos."""
+            if self.simulate_movement_var.get():
+                send_hardware_move(x, y)
+            else:
+                win32api.SetCursorPos((x, y))
+
+        def perform_click(btn):
+            send_hardware_click(btn, True)
+            send_hardware_click(btn, False)
 
         count = 0
         while self.macro_running and (count < repeat):
@@ -284,9 +332,7 @@ class MouseMacroApp:
                 for _ in range(num_clicks):
                     if not self.macro_running:
                         return
-                    down, up = BUTTONS["left"]
-                    win32api.mouse_event(down, 0, 0, 0, 0)
-                    win32api.mouse_event(up, 0, 0, 0, 0)
+                    perform_click("left")
                     try:
                         delay = max(0.0001, int(self.cps_delay_var.get()) / 1000.0)
                     except:
@@ -296,16 +342,15 @@ class MouseMacroApp:
                 for p in self.positions:
                     if not self.macro_running:
                         return
-                    win32api.SetCursorPos((p.x, p.y))
-                    down, up = BUTTONS.get(p.click.get(), BUTTONS["left"])
-                    win32api.mouse_event(down, 0, 0, 0, 0)
-                    win32api.mouse_event(up, 0, 0, 0, 0)
+                    move_to(p.x, p.y)
+                    perform_click(p.click.get())
                     try:
                         delay = max(0.0001, int(p.delay_var.get()) / 1000.0)
                     except:
                         delay = 0.01
                     time.sleep(delay)
             count += 1
+        self.macro_running = False
 
 if __name__ == "__main__":
     root = tk.Tk()
